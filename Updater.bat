@@ -1,23 +1,36 @@
 @echo off
-:: UTF-8 für saubere Darstellung und Umlaute
-chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
-:: 1. Farben initialisieren
+:: 1. ADMIN-RECHTE AUTOMATISCH ANFORDERN
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
+    echo UAC.ShellExecute "cmd.exe", "/c ""%~s0"" %*", "", "runas", 1 >> "%temp%\getadmin.vbs"
+    "%temp%\getadmin.vbs"
+    del "%temp%\getadmin.vbs"
+    exit /b
+)
+
+:: 2. GEISTER-CLEANER
+:: Löscht die Dateien "Das" und "UPDATE", falls sie noch existieren
+if exist "%~dp0UPDATE" del /f /q "%~dp0UPDATE" >nul 2>&1
+if exist "%~dp0Das" del /f /q "%~dp0Das" >nul 2>&1
+
+:: 3. UTF-8 & FARBEN
+chcp 65001 >nul
 for /f %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "OK=%ESC%[92m"
 set "INFO=%ESC%[96m"
 set "WARN=%ESC%[93m"
 set "RST=%ESC%[0m"
 
-:: 2. Konfiguration
-set "CUR_VER=2026-02-14.02"
-set "REPO_RAW_URL=https://raw.githubusercontent.com/Dtrieb/Updater/main"
-set "SCRIPT_NAME=%~nx0"
-set "FULL_PATH=%~f0"
+:: 4. KONFIGURATION
+set "CUR_VER=2026-02-14.03"
+set "REPO_URL=https://raw.githubusercontent.com/Dtrieb/Updater/main"
+set "MY_FILE=%~f0"
+set "T_DIR=%temp%\winget_upd_work"
 
 cls
-:: --- HEADER ---
 echo %INFO%  ===================================================%RST%
 echo.
 echo %OK%            Winget Update Script von Daniel%RST%
@@ -25,63 +38,49 @@ echo %OK%                 Version: %CUR_VER%%RST%
 echo %INFO%  ===================================================%RST%
 echo.
 
-:: 3. Update-Prüfung
+:: 5. UPDATE-CHECK
+if exist "%T_DIR%" rd /s /q "%T_DIR%" >nul 2>&1
+mkdir "%T_DIR%" >nul 2>&1
+
 echo %INFO%[1/3] Suche nach Skript-Updates...%RST%
-set "TEMP_VER=%temp%\git_ver.txt"
-if exist "%TEMP_VER%" del "%TEMP_VER%"
+curl -s -L -k -f --max-time 10 "%REPO_URL%/version.txt" -o "%T_DIR%\v.txt"
 
-curl -s -L -k -f --max-time 10 "%REPO_RAW_URL%/version.txt" -o "%TEMP_VER%"
+if not exist "%T_DIR%\v.txt" goto winget_start
+set /p LATEST=<"%T_DIR%\v.txt"
+set "LATEST=%LATEST: =%"
 
-if not exist "%TEMP_VER%" goto no_connection
-set /p LATEST_VER=<"%TEMP_VER%"
-set "LATEST_VER=%LATEST_VER: =%"
-
-if "%LATEST_VER%"=="%CUR_VER%" goto up_to_date
+if "%LATEST%"=="%CUR_VER%" (
+    echo %OK%Skript ist aktuell.%RST%
+    goto winget_start
+)
 
 echo.
-echo %WARN%  > UPDATE VERFÜGBAR: %LATEST_VER%%RST%
-echo %WARN%  > Das Skript wird nun aktualisiert...%RST%
+echo %WARN%  *** UPDATE VERFÜGBAR: %LATEST% ***%RST%
 echo.
-
-:: Vorauswahl auf 'j' setzen
 set "ans=j"
 set /p "ans=Möchtest du das Update jetzt laden? (J/n): "
-if /i "%ans%" neq "j" goto start_winget
+if /i "!ans!" neq "j" goto winget_start
 
 echo %INFO%Lade neue Version herunter...%RST%
-curl -s -L -k -f "%REPO_RAW_URL%/Updater.bat" -o "%FULL_PATH%.new"
+curl -s -L -k -f "%REPO_URL%/Updater.bat" -o "%T_DIR%\n.bat"
 
-if not exist "%FULL_PATH%.new" goto download_error
+:: 6. SICHERER AUSTAUSCH-PROZESS
+set "SWAP=%temp%\swapper.bat"
+(
+echo @echo off
+echo timeout /t 2 /nobreak ^>nul
+echo del /f /q "%MY_FILE%"
+echo move /y "%T_DIR%\n.bat" "%MY_FILE%"
+echo rd /s /q "%T_DIR%"
+echo start "" "%MY_FILE%"
+echo exit
+) > "%SWAP%"
 
-:: Hilfs-Skript für Austausch
-echo @echo off > "%temp%\upd.bat"
-echo chcp 65001 ^>nul >> "%temp%\upd.bat"
-echo timeout /t 1 >> "%temp%\upd.bat"
-echo del "%FULL_PATH%" >> "%temp%\upd.bat"
-echo ren "%FULL_PATH%.new" "%SCRIPT_NAME%" >> "%temp%\upd.bat"
-echo echo. >> "%temp%\upd.bat"
-echo echo Update erfolgreich installiert! Bitte neu starten. >> "%temp%\upd.bat"
-echo pause >> "%temp%\upd.bat"
-echo exit >> "%temp%\upd.bat"
-
-start "" "%temp%\upd.bat"
+start "" "%SWAP%"
 exit /b
 
-:no_connection
-echo %WARN%Update-Check übersprungen (keine Verbindung).%RST%
-goto start_winget
-
-:up_to_date
-echo %OK%Skript ist aktuell.%RST%
-goto start_winget
-
-:download_error
-echo %WARN%Download fehlgeschlagen.%RST%
-pause
-goto start_winget
-
-:start_winget
-if exist "%TEMP_VER%" del "%TEMP_VER%"
+:winget_start
+if exist "%T_DIR%" rd /s /q "%T_DIR%" >nul 2>&1
 echo.
 echo %INFO%[2/3] Aktualisiere Winget-Quellen...%RST%
 winget source update
@@ -89,25 +88,17 @@ echo.
 echo %INFO%[3/3] Prüfe verfügbare Programm-Updates...%RST%
 winget upgrade
 echo.
-
 echo %INFO%  ===================================================%RST%
 echo.
-
-:: Vorauswahl auf 'j' setzen
 set "updall=j"
 set /p "updall=Möchtest du jetzt ALLE Updates installieren? (J/n): "
-if /i "%updall%"=="j" goto do_upgrade
-goto ende
-
-:do_upgrade
-echo.
-echo %OK%Starte Upgrade-Vorgang aller Apps...%RST%
-winget upgrade --all --include-unknown
-
-:ende
+if /i "!updall!"=="j" (
+    echo.
+    echo %OK%Starte Upgrade-Vorgang aller Apps...%RST%
+    winget upgrade --all --include-unknown --accept-package-agreements --accept-source-agreements
+)
 echo.
 echo %INFO%  ===================================================%RST%
 echo %OK%Vorgang abgeschlossen!%RST%
-echo.
 pause
 exit
