@@ -13,18 +13,19 @@ set "ERR=%ESC%[91m"
 set "RST=%ESC%[0m"
 
 cls
-echo ===================================================
-echo          Winget Update Script von Daniel
-echo                  Version: 2026-02-12
-echo ===================================================
+echo %INFO%===================================================%RST%
+echo           Winget Update Script von Daniel
+echo                Version: 2026-02-14
+echo %INFO%===================================================%RST%
 echo.
 
 REM --- Winget-Quellen aktualisieren ---
 echo %INFO%[1/2] Aktualisiere Winget-Quellen...%RST%
 echo ---------------------------------------------------
 winget source update
-echo.
-echo %OK%Fertig mit Quellen-Update.%RST%
+if %ERRORLEVEL% neq 0 (
+    echo %WARN%Hinweis: Quell-Update war nicht vollständig erfolgreich.%RST%
+)
 echo.
 
 REM --- Verfügbare Updates prüfen ---
@@ -32,11 +33,9 @@ echo %INFO%[2/2] Prüfe verfügbare Updates...%RST%
 echo ---------------------------------------------------
 winget upgrade
 echo.
-echo %OK%Fertig mit Update-Prüfung.%RST%
-echo.
 
 REM --- Abfrage: Alle Updates automatisch installieren? ---
-echo ===================================================
+echo %INFO%===================================================%RST%
 echo %ERR%
 choice /M "Möchtest du jetzt ALLE Updates automatisch installieren?"
 echo %RST%
@@ -48,17 +47,18 @@ if errorlevel 1 goto upgradeall
 echo.
 echo %INFO%Starte winget upgrade --all ...%RST%
 echo ---------------------------------------------------
-winget upgrade --all
+:: --include-unknown hilft bei Apps, deren Version nicht klar erkannt wird
+winget upgrade --all --include-unknown
 goto ende
 
 :nein
 echo.
-echo %WARN%Du hast NEIN gewählt.%RST%
+echo %WARN%Du hast NEIN gewählt. Kein Upgrade durchgeführt.%RST%
 goto ende
 
 :ende
 echo.
-echo ===================================================
-echo %OK%Alles erledigt. Vielen Dank, dass du Winget benutzt!%RST%
-echo ===================================================
+echo %INFO%===================================================%RST%
+echo %OK%Alles erledigt. Vielen Dank für die Nutzung!%RST%
+echo %INFO%===================================================%RST%
 pause
